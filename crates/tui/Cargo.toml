@@ -1,0 +1,9 @@
+[package]
+name = "tui"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+ratatui.workspace = true
+crossterm.workspace = true
+anyhow.workspace = true
