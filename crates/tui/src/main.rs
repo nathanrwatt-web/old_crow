@@ -1,9 +1,9 @@
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
-    style::Stylize,
+    style::{Style, Stylize},
     widgets::{Block, Paragraph,
-            List, ListItem, ListDirection, ListState},
+            List, ListItem, ListState},
     DefaultTerminal, Frame,
 };
 
@@ -37,20 +37,24 @@ impl App {
                 Focus::Editor => {
                     match self.editor.handle_events()? {
                         EditorAction::None => {},
+                        EditorAction::TodoList => { self.focus = Focus::TodoList; }
                         EditorAction::Sumbit(text) => self.todo_list.push(text),
                         EditorAction::Quit => self.should_quit = true,
                     }
                 },
                 // if in TodoList
                 Focus::TodoList => {
-                    self.focus = Focus::Editor; // for now just change focus back to editor 
-                }
+                    match self.todo_list.handle_events()? {
+                        TodoListAction::None => {},
+                        TodoListAction::Quit => {self.focus = Focus::Editor;}
+                    }
+                },
             }
         }
         Ok(())
     }
 
-    fn draw(&self, frame: &mut Frame) {
+    fn draw(&mut self, frame: &mut Frame) {
         use ratatui::layout::{Constraint, Layout};
 
         let [header, body,editor_area, footer] = Layout::vertical([
@@ -63,17 +67,28 @@ impl App {
 
         let title = Paragraph::new(" productivity ").bold().block(Block::bordered());
         frame.render_widget(title, header);
-        
-        let items: Vec<ListItem> = self.todo_list.item_list.iter().map(|item| ListItem::new(item.item_name.as_str())).collect();
-        let content = List::new(items);
-        frame.render_widget(content, body);
+
+        // destructure todo list for borrowing mutable refereinces  
+        let TodoList { item_list, state } = &mut self.todo_list;
+
+        let items: Vec<ListItem> = item_list
+            .iter()
+            .map(|item| ListItem::new(item.item_name.as_str()))
+            .collect();
+
+        let content = List::new(items)
+            .highlight_style(Style::new().reversed())
+            .highlight_symbol("> ")
+            .scroll_padding(1);
+
+        frame.render_stateful_widget(content, body, state);
 
         let edit_stuff = Paragraph::new(self.editor.input.as_str()).block(Block::bordered());
         frame.render_widget(edit_stuff, editor_area);
 
         let help = match self.editor.input_mode {
             InputMode::Normal => {
-                Paragraph::new("<q> to quit, <e> to enter edit ").dim()
+                Paragraph::new("<q> to quit, <e> to enter edit, <t> to enter tasks").dim()
             }
             InputMode::Editing => {
                 Paragraph::new("<esc> to normal, <backspace> to delete").dim()
@@ -107,7 +122,13 @@ enum InputMode {
 
 enum EditorAction {
     None,
+    TodoList,
     Sumbit(String),
+    Quit,
+}
+
+enum TodoListAction {
+    None, 
     Quit,
 }
 
@@ -137,7 +158,8 @@ impl Editor {
                         KeyCode::Char('e') => {
                             self.input_mode = InputMode::Editing;
                             EditorAction::None
-                        }
+                        },
+                        KeyCode::Char('t') => EditorAction::TodoList,
                         _ => EditorAction::None,
                     },
                 // handle editing 
@@ -222,24 +244,60 @@ impl Editor {
 
 // ========= TodoList ============
 struct TodoItem {
-    item_name: String, 
+    item_name: String,
 }
 
 struct TodoList {
     item_list: Vec<TodoItem>,
+    state: ListState,
 }
 
 impl TodoList {
     fn new() -> Self {
         Self {
             item_list: Vec::new(),
+            state: ListState::default(),
         }
     }
 
     fn push(&mut self, todo: String) {
-        let new_item = TodoItem {
-            item_name: todo,
+        let new_item = TodoItem { item_name: todo };
+        self.item_list.push(new_item);
+        // if no item, autoselect the first added item
+        if self.state.selected().is_none() {
+            self.state.select(Some(0));
+        }
+
+    }
+
+    fn handle_events(&mut self) -> Result<TodoListAction> {
+
+        if !event::poll(std::time::Duration::from_millis(100))? {
+            return Ok(TodoListAction::None);
+        }
+
+        let Event::Key(key) = event::read()? else {
+            return Ok(TodoListAction::None);
         };
-        self.item_list.push(new_item)
+
+        if key.kind != KeyEventKind::Press {
+            return Ok(TodoListAction::None);
+        }
+
+        let action = match key.code {
+            KeyCode::Esc => {
+                TodoListAction::Quit
+            },
+            KeyCode::Up | KeyCode::Char('i') => {
+                self.state.select_previous(); // list it bottom up stack
+                TodoListAction::None
+            },
+            KeyCode::Down | KeyCode::Char('k') => {
+                self.state.select_next();
+                TodoListAction::None
+            },
+            _ => { TodoListAction::None }  // something? 
+        };
+        Ok(action)
     }
 }
