@@ -50,12 +50,29 @@ impl App {
                     match self.todo_list.handle_events()? {
                         TodoListAction::None => {},
                         TodoListAction::Quit => {self.focus = Focus::Editor;}
+                        TodoListAction::Delete => {
+                            if let Some(selected) = self.todo_list.state.selected() {
+                                if selected < self.todo_list.item_list.len() {
+                                    self.todo_list.item_list.remove(selected);
+                                }
+
+                                if self.todo_list.item_list.is_empty() {
+                                    self.todo_list.state.select(None);
+                                }
+                                else if selected >= self.todo_list.item_list.len() {
+                                    self.todo_list.state.select(Some(self.todo_list.item_list.len() -1));
+                                }
+                                // else selected stays same, points to new item
+                            } 
+                        }
                     }
                 },
             }
         }
         Ok(())
     }
+                    
+                    
 
     fn draw(&mut self, frame: &mut Frame) {
         let [header, body, editor_area, footer] = Layout::vertical([

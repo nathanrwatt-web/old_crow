@@ -14,6 +14,7 @@ pub struct TodoList {
 pub enum TodoListAction {
     None, 
     Quit,
+    Delete,
 }
 
 impl TodoList {
@@ -60,6 +61,9 @@ impl TodoList {
                 self.state.select_next();
                 TodoListAction::None
             },
+            KeyCode::Backspace => {
+                TodoListAction::Delete
+            }
             _ => { TodoListAction::None }  // something? 
         };
         Ok(action)
