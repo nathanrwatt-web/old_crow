@@ -1,6 +1,8 @@
 mod app;
 mod editor;
 mod todo_list;
+mod menu;
+
 
 use anyhow::Result;
 use app::App;

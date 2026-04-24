@@ -8,14 +8,16 @@ use ratatui::{
 
 use crate::editor::{Editor, EditorAction, InputMode};
 use crate::todo_list::{TodoList, TodoListAction};
-
+use crate::menu::{Menu};
 
 enum Focus {
-    Editor,
+    Menu,
     TodoList,
+    Editor,
 }
 
 pub struct App {
+    menu: Menu,
     todo_list: TodoList,
     editor: Editor,
     focus: Focus,
@@ -27,6 +29,7 @@ impl App {
         Self {
             todo_list: TodoList::new(),
             editor: Editor::new(),
+            menu: Menu::new(),
             focus: Focus::Editor,
             should_quit: false,
         }
@@ -36,7 +39,11 @@ impl App {
         while !self.should_quit {
             terminal.draw(|frame| self.draw(frame))?;
             match self.focus {
-                // if in Editor
+                Focus::Menu => {
+                    match self.menu.handle_events()? {
+                        _ => todo!()
+                    }
+                }
                 Focus::Editor => {
                     match self.editor.handle_events()? {
                         EditorAction::None => {},
@@ -45,11 +52,10 @@ impl App {
                         EditorAction::Quit => self.should_quit = true,
                     }
                 },
-                // if in TodoList
                 Focus::TodoList => {
                     match self.todo_list.handle_events()? {
                         TodoListAction::None => {},
-                        TodoListAction::Quit => {self.focus = Focus::Editor;}
+                        TodoListAction::Quit => {self.focus = Focus::Menu;}
                         TodoListAction::Delete => {
                             if let Some(selected) = self.todo_list.state.selected() {
                                 if selected < self.todo_list.item_list.len() {
@@ -63,8 +69,9 @@ impl App {
                                     self.todo_list.state.select(Some(self.todo_list.item_list.len() -1));
                                 }
                                 // else selected stays same, points to new item
-                            } 
+                            }
                         }
+                        TodoListAction::Edit => { self.focus = Focus::Editor; },
                     }
                 },
             }
@@ -75,6 +82,7 @@ impl App {
                     
 
     fn draw(&mut self, frame: &mut Frame) {
+        
         let [header, body, editor_area, footer] = Layout::vertical([
             Constraint::Length(3),
             Constraint::Min(0),
