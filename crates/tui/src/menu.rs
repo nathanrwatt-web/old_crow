@@ -9,7 +9,6 @@ pub enum MenuAction {
     None,
 }
 
-
 pub struct Menu {
    pub application_list: Vec<String>,
    pub state: ListState,
@@ -18,7 +17,7 @@ pub struct Menu {
 impl Menu {
     pub fn new() -> Self {
         Self {
-            application_list: Vec::new(),
+            application_list: vec!["TodoList".to_string()],
             state: ListState::default(),
         }
     }
@@ -51,7 +50,8 @@ impl Menu {
             },
             KeyCode::Enter => {
                 MenuAction::EnterApp
-            }
+            },
+            _ => { MenuAction::None }
         };
         Ok(action)
     }

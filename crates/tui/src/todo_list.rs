@@ -2,7 +2,7 @@ use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::widgets::ListState;
 
-enum Priority {
+pub enum Priority {
     Low, 
     Medium, 
     High,

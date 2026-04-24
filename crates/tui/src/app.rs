@@ -7,8 +7,8 @@ use ratatui::{
 };
 
 use crate::editor::{Editor, EditorAction, InputMode};
-use crate::todo_list::{TodoList, TodoListAction};
-use crate::menu::{Menu};
+use crate::todo_list::{TodoList, TodoListAction, Priority};
+use crate::menu::{Menu, MenuAction };
 
 enum Focus {
     Menu,
@@ -30,7 +30,7 @@ impl App {
             todo_list: TodoList::new(),
             editor: Editor::new(),
             menu: Menu::new(),
-            focus: Focus::Editor,
+            focus: Focus::Menu,
             should_quit: false,
         }
     }
@@ -41,14 +41,23 @@ impl App {
             match self.focus {
                 Focus::Menu => {
                     match self.menu.handle_events()? {
-                        _ => todo!()
+                        MenuAction::QuitApplication => {
+                            self.should_quit = true;
+                        },
+                        MenuAction::EnterApp => {
+                            match self.menu.state.selected() {
+                                Some(0) => { self.focus = Focus::TodoList; },
+                                _ => { self.focus = Focus::Menu; }
+                                }
+                            },
+                        _ => { self.focus = Focus::Menu; }
                     }
-                }
+                },
                 Focus::Editor => {
                     match self.editor.handle_events()? {
                         EditorAction::None => {},
                         EditorAction::TodoList => { self.focus = Focus::TodoList; }
-                        EditorAction::Sumbit(text) => self.todo_list.push(text),
+                        EditorAction::Sumbit(text) => self.todo_list.push(text, String::from("Date under work"), Priority::Low),
                         EditorAction::Quit => self.should_quit = true,
                     }
                 },
@@ -82,18 +91,31 @@ impl App {
                     
 
     fn draw(&mut self, frame: &mut Frame) {
-        
-        let [header, body, editor_area, footer] = Layout::vertical([
-            Constraint::Length(3),
+        let [body, editor_area] = Layout::vertical([
             Constraint::Min(0),
-            Constraint::Length(3), 
-            Constraint::Length(1),
+            Constraint::Length(4),
         ])
         .areas(frame.area());
 
-        let title = Paragraph::new(" productivity ").bold().block(Block::bordered());
-        frame.render_widget(title, header);
+        let [menu_area, cur_app] = Layout::horizontal([
+            Constraint::Length(20),
+            Constraint::Min(0),
+        ])
+        .areas(body);
 
+        let edit_stuff = Paragraph::new(self.editor.input.as_str()).block(Block::bordered());
+        frame.render_widget(edit_stuff, editor_area);
+        
+        let Menu { application_list, state } = &mut self.menu;
+        let menu_items: Vec<ListItem> = application_list.iter().map(|item| ListItem::new(item.as_str())).collect();
+        let menu_content = List::new(menu_items)
+            .highlight_style(Style::new().reversed())
+            .highlight_symbol("> ")
+            .scroll_padding(1)
+            .block(Block::bordered());
+
+        frame.render_stateful_widget(menu_content, menu_area, state);
+        
         // destructure todo list for borrowing mutable refereinces  
         let TodoList { item_list, state } = &mut self.todo_list;
 
@@ -107,21 +129,7 @@ impl App {
             .highlight_symbol("> ")
             .scroll_padding(1);
 
-        frame.render_stateful_widget(content, body, state);
-
-        let edit_stuff = Paragraph::new(self.editor.input.as_str()).block(Block::bordered());
-        frame.render_widget(edit_stuff, editor_area);
-
-        let help = match self.editor.input_mode {
-            InputMode::Normal => {
-                Paragraph::new("<q> to quit, <e> to enter edit, <t> to enter tasks").dim()
-            }
-            InputMode::Editing => {
-                Paragraph::new("<esc> to normal, <backspace> to delete").dim()
-
-            },
-        };
-        frame.render_widget(help, footer);
+        frame.render_stateful_widget(content, cur_app, state);
     }
 }
 
