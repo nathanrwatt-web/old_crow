@@ -1,13 +1,15 @@
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use ratatui::widgets::ListState;
+use ratatui::{
+    style::Style,
+    layout::Rect,
+    widgets::{ListState, ListItem, List, Block},
+    Frame,
+};
 
+use crate::screen::{Screen, Transition};
+use crate::todo_list::TodoList;
 
-pub enum MenuAction {
-    EnterApp,
-    QuitApplication, 
-    None,
-}
 
 pub struct Menu {
    pub application_list: Vec<String>,
@@ -21,38 +23,44 @@ impl Menu {
             state: ListState::default(),
         }
     }
+}
 
-    pub fn handle_events(&mut self) -> Result<MenuAction> {
-        
-        if !event::poll(std::time::Duration::from_millis(100))? {
-            return Ok(MenuAction::None);
-        }
-        
-        let Event::Key(key) = event::read()? else {
-            return Ok(MenuAction::None);
-        };
+impl Screen for Menu {
+    fn handle_event(&mut self, ev: Event) -> Transition {
+        let Event::Key(key) = ev else { return Transition::Stay; };
+        if key.kind != KeyEventKind::Press { return Transition::Stay; }
 
-        if key.kind != KeyEventKind::Press {
-            return Ok(MenuAction::None);
-        }
-
-        let action = match key.code {
-            KeyCode::Char('q') => {
-                MenuAction::QuitApplication
-            },
+        match key.code {
+            KeyCode::Char('q') => Transition::Quit,
             KeyCode::Up | KeyCode::Char('i') => {
-                self.state.select_previous();
-                MenuAction::None
+               self.state.select_previous();
+               Transition::Stay
             },
             KeyCode::Down | KeyCode::Char('k') => {
                 self.state.select_next();
-                MenuAction::None
+                Transition::Stay
             },
             KeyCode::Enter => {
-                MenuAction::EnterApp
+                match self.state.selected() {
+                    Some(0) => Transition::Push(Box::new(TodoList::new())),
+                    _ => Transition::Stay,
+                }
             },
-            _ => { MenuAction::None }
-        };
-        Ok(action)
+            _ => Transition::Stay,
+        }
+    }
+
+    fn draw(&mut self, frame: &mut Frame, area: Rect) {
+        let items: Vec<ListItem> = self.application_list.iter()
+            .map(|item| ListItem::new(item.as_str())).collect();
+        let list = List::new(items)
+            .highlight_style(Style::new().reversed())
+            .highlight_symbol("> ")
+            .block(Block::bordered().title("Menu"));
+        frame.render_stateful_widget(list, area, &mut self.state);
+    }
+
+    fn footer_hint(&self) -> &str {
+        "Menu: <q> quit | <i/k> move | <enter> select"
     }
 }

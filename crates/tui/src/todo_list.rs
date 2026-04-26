@@ -67,7 +67,7 @@ impl TodoList {
         }
 
         let action = match key.code {
-            KeyCode::Esc => {
+            KeyCode::Char('q') => {
                 TodoListAction::Quit
             },
             KeyCode::Up | KeyCode::Char('i') => {

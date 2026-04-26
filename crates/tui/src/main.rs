@@ -2,7 +2,7 @@ mod app;
 mod editor;
 mod todo_list;
 mod menu;
-
+mod screen;
 
 use anyhow::Result;
 use app::App;
