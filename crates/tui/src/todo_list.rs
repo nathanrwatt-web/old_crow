@@ -1,14 +1,11 @@
-use crossterm::event::{Event, KeyCode, KeyEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyEvent};
 use ratatui::{
-    style::{Style, Stylize},
-    layout::Rect,
-    widgets::{ListState, ListItem, List, Block},
-    Frame,
-    
+    Frame, layout::{Constraint, Rect, Layout},
+    style::{Style, Stylize, Color},
+    widgets::{Block, List, ListItem, ListState, Paragraph}
 };
 use crate::screen::{Screen, Transition};
-use crate::editor::Editor;
-
+use crate::text_field::TextField;
 
 pub enum Priority {
     Low, 
@@ -25,13 +22,7 @@ pub struct TodoItem {
 pub struct TodoList {
     pub item_list: Vec<TodoItem>,
     pub state: ListState,
-}
-
-pub enum TodoListAction {
-    None, 
-    Quit,
-    Delete,
-    Edit,
+    pub form: Option<TodoForm>,
 }
 
 impl TodoList {
@@ -39,6 +30,7 @@ impl TodoList {
         Self {
             item_list: Vec::new(),
             state: ListState::default(),
+            form: None,
         }
     }
 
@@ -52,13 +44,121 @@ impl TodoList {
     }
 }
 
+// ===== Finite State for editing vs Scrolling =====
+#[derive(PartialEq)]
+enum FormFocus { Name, Date, Priority }
+enum FormResult { Stay, Cancel, Submit }
+
+struct TodoForm {
+    name: TextField, 
+    date: TextField, 
+    priority: Priority,
+    focus: FormFocus, 
+    editing_existing: Option<usize>,
+}
+
+impl TodoForm {
+    fn new() -> Self {
+        Self {
+            name: TextField::new(),
+            date: TextField::new(),
+            priority: Priority::Low,
+            focus: FormFocus::Name,
+            editing_existing: None,
+        }
+    }
+
+    fn handle_key(&mut self, key: KeyEvent) -> FormResult {
+        match key.code {
+            KeyCode::Esc => return FormResult::Cancel,
+            KeyCode::Tab => { 
+                self.focus = self.next_focus();
+                return FormResult::Stay;
+            },
+            KeyCode::Enter => { return FormResult::Submit; },
+            _ => { }
+        }
+
+        match self.focus {
+            FormFocus::Name => { self.name.handle_key(key); },
+            FormFocus::Date => { self.date.handle_key(key); },
+            FormFocus::Priority => {
+                match key.code {
+                    KeyCode::Left | KeyCode::Right => self.cycle_priority(),
+                    _ => { }
+                }
+            }
+        }
+        FormResult::Stay
+    }
+
+    fn draw(&mut self, frame: &mut Frame, area: Rect) {
+        let [name_area, date_area, priority_area] = Layout::vertical([
+            Constraint::Length(3), Constraint::Length(3), Constraint::Length(3),
+        ]).areas(area);
+
+        self.name.draw(frame, name_area, "Name", self.focus == FormFocus::Name);
+        self.date.draw(frame, date_area, "Date", self.focus == FormFocus::Date);
+
+        let border_style = if self.focus == FormFocus::Priority {
+            Style::new().fg(Color::LightBlue) 
+        } else {
+            Style::new().fg(Color::DarkGray)
+        };
+
+        let block = Block::bordered().title("Priority").border_style(border_style);
+        let para = Paragraph::new( match self.priority {
+            Priority::Low => "Low", Priority::Medium => "Medium", Priority::High => "High",
+        });
+        frame.render_widget(para, priority_area);
+    }
+
+    fn commit_form(&mut self, )
+
+
+    fn cycle_priority(&mut self) {
+        self.priority = match self.priority {
+            Priority::Low => Priority::Medium,
+            Priority::Medium => Priority::High,
+            Priority::High => Priority::Low,
+        }
+
+    }
+
+    fn next_focus(&mut self) -> FormFocus {
+        match self.focus {
+            FormFocus::Name => FormFocus::Date,
+            FormFocus::Date => FormFocus::Priority,
+            FormFocus::Priority => FormFocus::Date,
+        }
+    }
+
+}
+
 impl Screen for TodoList {
     fn handle_event(&mut self, event: Event) -> Transition {
         let Event::Key(key) = event else { return Transition::Stay; };
         if key.kind != KeyEventKind::Press { return Transition::Stay; }
 
+        // see if form exists 
+        if let Some(form) = &mut self.form {
+            match form.handle_key(key) {
+                FormResult::Stay => {},
+                FormResult::Cancel => self.form = None,
+                FormResult::Submit => {
+                    let f = self.form.take().unwrap(); // potentially add check for none?
+                    self.commit_form(f);
+                }
+            }
+            return Transition::Stay;
+        }
+
         match key.code {
             KeyCode::Char('q') => Transition::Pop,
+            KeyCode::Char('n') => {
+                self.form = Some(TodoForm::new());
+                Transition::Stay
+            },
             KeyCode::Up | KeyCode::Char('i') => {
                 self.state.select_previous();
                 Transition::Stay

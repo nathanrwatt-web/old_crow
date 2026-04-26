@@ -1,5 +1,5 @@
-use crossterm::event::{Event, KeyCode};
-use ratatio::{
+use crossterm::event::{Event, KeyCode, KeyEvent};
+use ratatui::{
     layout::Rect,
     style::{Color, Style, Stylize},
     widgets::{Block, Paragraph},
@@ -19,11 +19,9 @@ impl TextField {
         }
     }
 
-    pub fn from(initial: Stirng) -> Self {
-        Self {
-            value: initial,
-            cursor: initial.chars().count(),
-        }
+    pub fn from(initial: String) -> Self {
+        let cursor = initial.chars().count();
+        Self { value: initial, cursor }
     }
 
     pub fn value(&self) -> &str {
@@ -32,7 +30,7 @@ impl TextField {
 
     pub fn take(&mut self) -> String {
         self.cursor = 0;
-        std::mem::tak3(&mut self.value)
+        std::mem::take(&mut self.value)
     }
 
     pub fn clear(&mut self) {
@@ -58,13 +56,14 @@ impl TextField {
         let border_style = if focused {
             Style::new().fg(Color::LightBlue)
         } else {
-            Style::new().fg(Color::DarkGrey)
+            Style::new().fg(Color::DarkGray)
         };
-        let block = Block::bordered().title(lable).border_style(border_style);
-        let para = Paragraph::new(self.value.as_str().block(block));
-        frame.render_widget(para, block);
+        let block = Block::bordered().title(label).border_style(border_style);
+        let para = Paragraph::new(self.value.as_str()).block(block);
+        frame.render_widget(para, area);
     }
 
+    // inserts at the byte index of self.cursor
     fn insert(&mut self, c: char) {
         let byte_idx = self.byte_index();
         self.value.insert(byte_idx, c);
@@ -76,11 +75,12 @@ impl TextField {
         let target = self.cursor - 1;
         // delete only the previous char by index
         self.value = self.value.chars().enumerate()
-            .filter_map(|i, c| if i == target { None } else { Some(c) })
+            .filter_map(|(i, c)| if i == target { None } else { Some(c) })
             .collect();
         self.cursor = target;
     }
 
+    // calculates the byte value of the current index or returns the byte length of value
     fn byte_index(&self) -> usize {
         self.value.char_indices()
             .nth(self.cursor)

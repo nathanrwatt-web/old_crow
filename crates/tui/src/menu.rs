@@ -1,6 +1,7 @@
+use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
-    style::{Style, Stylize},
+    style::Style,
     layout::Rect,
     widgets::{ListState, ListItem, List, Block},
     Frame,
