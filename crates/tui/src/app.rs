@@ -1,7 +1,8 @@
 use anyhow::Result;
 use ratatui::{
+    text::Line,
     layout::{Constraint, Layout},
-    style::{Style, Stylize},
+    style::{Style, Color, Stylize},
     widgets::{Block, List, ListItem, Paragraph},
     DefaultTerminal, Frame,
 };
@@ -58,7 +59,7 @@ impl App {
                         EditorAction::None => {},
                         EditorAction::TodoList => { self.focus = Focus::TodoList; }
                         EditorAction::Sumbit(text) => self.todo_list.push(text, String::from("Date under work"), Priority::Low),
-                        EditorAction::Quit => self.should_quit = true,
+                        EditorAction::Quit => self.focus = Focus::Menu,
                     }
                 },
                 Focus::TodoList => {
@@ -91,9 +92,10 @@ impl App {
                     
 
     fn draw(&mut self, frame: &mut Frame) {
-        let [body, editor_area] = Layout::vertical([
+        let [body, editor_area, footer] = Layout::vertical([
             Constraint::Min(0),
             Constraint::Length(4),
+            Constraint::Length(2)
         ])
         .areas(frame.area());
 
@@ -112,7 +114,7 @@ impl App {
             .highlight_style(Style::new().reversed())
             .highlight_symbol("> ")
             .scroll_padding(1)
-            .block(Block::bordered());
+            .block(Block::bordered().title(Line::from("Menu").centered().fg(Color::LightBlue)));
 
         frame.render_stateful_widget(menu_content, menu_area, state);
         
@@ -121,15 +123,47 @@ impl App {
 
         let items: Vec<ListItem> = item_list
             .iter()
-            .map(|item| ListItem::new(item.item_name.as_str()))
+            .map(|item| {
+                let priority = match item.priority {
+                    Priority::High => "High Priority",
+                    Priority::Medium => "Medium Priority",
+                    Priority::Low => "Low Priority",
+                };
+                ListItem::new(format!("{}|---|{}|---|{}", item.item_name, item.date, priority))
+            })
             .collect();
 
         let content = List::new(items)
             .highlight_style(Style::new().reversed())
             .highlight_symbol("> ")
-            .scroll_padding(1);
+            .scroll_padding(1)
+            .block(Block::bordered());
 
         frame.render_stateful_widget(content, cur_app, state);
+
+
+        let footer_content = match self.focus {
+            Focus::Menu => {
+                Paragraph::new("Menu: <q> quit | <i> next | <k> previous | <enter> enter selected")
+            },
+            Focus::TodoList => {
+                Paragraph::new("TodoList: <q/e> quit to editor | <i> next | <k> previous | <backspace> delete ")
+
+            },
+            Focus::Editor => {
+                match self.editor.input_mode {
+                    InputMode::Normal => {
+                        Paragraph::new("Editor (Normal): <q> quit to menu | <e> edit | <t> TodoList")
+                    },
+                    InputMode::Editing => {
+                        Paragraph::new("Editor: <esc> normal | <enter> submit")
+                    }
+                }
+
+            }
+        };
+
+        frame.render_widget(footer_content, footer);
     }
 }
 
