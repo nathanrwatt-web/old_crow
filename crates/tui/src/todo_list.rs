@@ -1,6 +1,14 @@
-use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use ratatui::widgets::ListState;
+use crossterm::event::{Event, KeyCode, KeyEventKind};
+use ratatui::{
+    style::{Style, Stylize},
+    layout::Rect,
+    widgets::{ListState, ListItem, List, Block},
+    Frame,
+    
+};
+use crate::screen::{Screen, Transition};
+use crate::editor::Editor;
+
 
 pub enum Priority {
     Low, 
@@ -42,50 +50,56 @@ impl TodoList {
             self.state.select(Some(0));
         }
     }
+}
 
-    pub fn edit_selected(&mut self, index: usize, name: String, date_input: String, priority_input : Priority) {
-        if !self.item_list.is_empty() {
-            self.item_list[index].item_name = name;
-            self.item_list[index].date = date_input;
-            self.item_list[index].priority = priority_input;
-        } else {
-            self.push(name, date_input, priority_input);
-        }
-    }
+impl Screen for TodoList {
+    fn handle_event(&mut self, event: Event) -> Transition {
+        let Event::Key(key) = event else { return Transition::Stay; };
+        if key.kind != KeyEventKind::Press { return Transition::Stay; }
 
-    pub fn handle_events(&mut self) -> Result<TodoListAction> {
-
-        if !event::poll(std::time::Duration::from_millis(100))? {
-            return Ok(TodoListAction::None);
-        }
-        let Event::Key(key) = event::read()? else {
-            return Ok(TodoListAction::None);
-        };
-
-        if key.kind != KeyEventKind::Press {
-            return Ok(TodoListAction::None);
-        }
-
-        let action = match key.code {
-            KeyCode::Char('q') => {
-                TodoListAction::Quit
-            },
+        match key.code {
+            KeyCode::Char('q') => Transition::Pop,
             KeyCode::Up | KeyCode::Char('i') => {
-                self.state.select_previous(); // list it bottom up stack
-                TodoListAction::None
+                self.state.select_previous();
+                Transition::Stay
             },
             KeyCode::Down | KeyCode::Char('k') => {
                 self.state.select_next();
-                TodoListAction::None
+                Transition::Stay
             },
             KeyCode::Backspace => {
-                TodoListAction::Delete
+                self.item_list.remove(self.state.selected().unwrap());
+                Transition::Stay
             },
+            /*
             KeyCode::Char('e') => {
-                TodoListAction::Edit
+                Transition::Push(Box::new(Editor::new()))
             }
-            _ => { TodoListAction::None }  // something? 
-        };
-        Ok(action)
+            */
+            _ => Transition::Stay
+        }
     }
+    
+    fn draw(&mut self, frame: &mut Frame, area: Rect) {
+        let items: Vec<ListItem> = self.item_list.iter()
+            .map(|item| ListItem::new(
+                    format!("{}{}{}", item.item_name, item.date, match item.priority {
+                        Priority::Low => "Low Priority",
+                        Priority::Medium => "Medium Priority",
+                        Priority::High => "High Priority",
+                    })
+                    )
+                )
+            .collect();
+        let list = List::new(items)
+            .highlight_style(Style::new().reversed())
+            .highlight_symbol("> ")
+            .block(Block::bordered());
+        frame.render_stateful_widget(list, area, &mut self.state);
+    }
+
+    fn footer_hint(&self) -> &str {
+        "TodoList: <q> quit | <i/j> move | <e> editor | <Backspace> delete"
+    }
+
 }

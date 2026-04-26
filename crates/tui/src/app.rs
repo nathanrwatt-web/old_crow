@@ -1,26 +1,25 @@
 use anyhow::Result;
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
-    text::Line,
     layout::{Constraint, Layout},
-    style::{Style, Color, Stylize},
-    widgets::{Block, List, ListItem, Paragraph},
+    style::{Style, Color},
+    widgets::Paragraph,
     DefaultTerminal, Frame,
 };
+use std::time::Duration;
 
-use crate::editor::{Editor, EditorAction, InputMode};
-use crate::todo_list::{TodoList, TodoListAction, Priority};
-use crate::menu::{Menu, MenuAction };
+use crate::menu::Menu;
+use crate::screen::{Screen, Transition};
 
+#[derive(PartialEq)]
 enum Focus {
-    Menu,
-    TodoList,
-    Editor,
+    Menu, 
+    Screen,
 }
 
 pub struct App {
     menu: Menu,
-    todo_list: TodoList,
-    editor: Editor,
+    stack: Vec<Box<dyn Screen>>,
     focus: Focus,
     should_quit: bool,
 }
@@ -28,9 +27,8 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         Self {
-            todo_list: TodoList::new(),
-            editor: Editor::new(),
             menu: Menu::new(),
+            stack: Vec::new(),
             focus: Focus::Menu,
             should_quit: false,
         }
@@ -39,51 +37,51 @@ impl App {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         while !self.should_quit {
             terminal.draw(|frame| self.draw(frame))?;
-            match self.focus {
-                Focus::Menu => {
-                    match self.menu.handle_events()? {
-                        MenuAction::QuitApplication => {
-                            self.should_quit = true;
-                        },
-                        MenuAction::EnterApp => {
-                            match self.menu.state.selected() {
-                                Some(0) => { self.focus = Focus::TodoList; },
-                                _ => { self.focus = Focus::Menu; }
-                                }
-                            },
-                        _ => { self.focus = Focus::Menu; }
-                    }
-                },
-                Focus::Editor => {
-                    match self.editor.handle_events()? {
-                        EditorAction::None => {},
-                        EditorAction::TodoList => { self.focus = Focus::TodoList; }
-                        EditorAction::Sumbit(text) => self.todo_list.push(text, String::from("Date under work"), Priority::Low),
-                        EditorAction::Quit => self.focus = Focus::Menu,
-                    }
-                },
-                Focus::TodoList => {
-                    match self.todo_list.handle_events()? {
-                        TodoListAction::None => {},
-                        TodoListAction::Quit => {self.focus = Focus::Menu;}
-                        TodoListAction::Delete => {
-                            if let Some(selected) = self.todo_list.state.selected() {
-                                if selected < self.todo_list.item_list.len() {
-                                    self.todo_list.item_list.remove(selected);
-                                }
 
-                                if self.todo_list.item_list.is_empty() {
-                                    self.todo_list.state.select(None);
-                                }
-                                else if selected >= self.todo_list.item_list.len() {
-                                    self.todo_list.state.select(Some(self.todo_list.item_list.len() -1));
-                                }
-                                // else selected stays same, points to new item
+            if !event::poll(Duration::from_millis(100))? { continue; }
+            let cur_event = event::read()?;
+
+            if let Event::Key(key) = cur_event {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+
+                if key.code == KeyCode::Tab {
+                    self.focus = match self.focus {
+                        Focus::Menu => {
+                            if self.stack.is_empty() {
+                                Focus::Menu
+                            } else {
+                                Focus::Screen
                             }
                         }
-                        TodoListAction::Edit => { self.focus = Focus::Editor; },
-                    }
+                        Focus::Screen => Focus::Menu,
+                    };
+                    continue;
+                }
+            }
+
+            let transition = match self.focus {
+                Focus::Menu => self.menu.handle_event(cur_event),
+                Focus::Screen => match self.stack.last_mut() {
+                    Some(top) => top.handle_event(cur_event),
+                    None => Transition::Stay,
                 },
+            };
+
+            match transition {
+                Transition::Stay => {},
+                Transition::Quit => self.should_quit = true,
+                Transition::Push(screen) => {
+                    self.stack.push(screen);
+                    self.focus = Focus::Screen;
+                },
+                Transition::Pop => {
+                    self.stack.pop();
+                    if self.stack.is_empty() {
+                        self.focus = Focus::Menu;
+                    }
+                }
             }
         }
         Ok(())
@@ -92,78 +90,39 @@ impl App {
                     
 
     fn draw(&mut self, frame: &mut Frame) {
-        let [body, editor_area, footer] = Layout::vertical([
+        let [body, footer] = Layout::vertical([
             Constraint::Min(0),
-            Constraint::Length(4),
-            Constraint::Length(2)
+            Constraint::Length(1),
         ])
         .areas(frame.area());
 
-        let [menu_area, cur_app] = Layout::horizontal([
+        let [menu_area, screen_area] = Layout::horizontal([
             Constraint::Length(20),
             Constraint::Min(0),
         ])
         .areas(body);
 
-        let edit_stuff = Paragraph::new(self.editor.input.as_str()).block(Block::bordered());
-        frame.render_widget(edit_stuff, editor_area);
-        
-        let Menu { application_list, state } = &mut self.menu;
-        let menu_items: Vec<ListItem> = application_list.iter().map(|item| ListItem::new(item.as_str())).collect();
-        let menu_content = List::new(menu_items)
-            .highlight_style(Style::new().reversed())
-            .highlight_symbol("> ")
-            .scroll_padding(1)
-            .block(Block::bordered().title(Line::from("Menu").centered().fg(Color::LightBlue)));
 
-        frame.render_stateful_widget(menu_content, menu_area, state);
-        
-        // destructure todo list for borrowing mutable refereinces  
-        let TodoList { item_list, state } = &mut self.todo_list;
+        self.menu.draw(frame, menu_area);
 
-        let items: Vec<ListItem> = item_list
-            .iter()
-            .map(|item| {
-                let priority = match item.priority {
-                    Priority::High => "High Priority",
-                    Priority::Medium => "Medium Priority",
-                    Priority::Low => "Low Priority",
-                };
-                ListItem::new(format!("{}|---|{}|---|{}", item.item_name, item.date, priority))
-            })
-            .collect();
-
-        let content = List::new(items)
-            .highlight_style(Style::new().reversed())
-            .highlight_symbol("> ")
-            .scroll_padding(1)
-            .block(Block::bordered());
-
-        frame.render_stateful_widget(content, cur_app, state);
-
-
-        let footer_content = match self.focus {
-            Focus::Menu => {
-                Paragraph::new("Menu: <q> quit | <i> next | <k> previous | <enter> enter selected")
-            },
-            Focus::TodoList => {
-                Paragraph::new("TodoList: <q/e> quit to editor | <i> next | <k> previous | <backspace> delete ")
-
-            },
-            Focus::Editor => {
-                match self.editor.input_mode {
-                    InputMode::Normal => {
-                        Paragraph::new("Editor (Normal): <q> quit to menu | <e> edit | <t> TodoList")
-                    },
-                    InputMode::Editing => {
-                        Paragraph::new("Editor: <esc> normal | <enter> submit")
-                    }
+        let hint = match self.stack.last_mut() {
+            Some(top) => {
+                top.draw(frame, screen_area);
+                if self.focus == Focus::Screen {
+                    top.footer_hint()
+                } else {
+                    self.menu.footer_hint()
                 }
-
+            },
+            None => {
+                let placeholder = Paragraph::new("Select an app from the menu")
+                    .style(Style::new().fg(Color::DarkGray));
+                frame.render_widget(placeholder, screen_area);
+                self.menu.footer_hint()
             }
         };
 
-        frame.render_widget(footer_content, footer);
+        frame.render_widget(Paragraph::new(hint), footer);
     }
 }
 
