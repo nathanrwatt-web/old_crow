@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 pub struct TextField {
-    value: String, 
+    pub value: String, 
     cursor: usize,
 }
 

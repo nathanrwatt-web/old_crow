@@ -13,7 +13,7 @@ pub enum Priority {
     High,
 }
 
-pub struct TodoItem {
+pub struct TodoItem { 
     pub item_name: String,
     pub date: String, 
     pub priority: Priority,
@@ -34,13 +34,21 @@ impl TodoList {
         }
     }
 
-    pub fn push(&mut self, name: String, date_input: String, priority_input : Priority) {
-        let new_item = TodoItem { item_name: name, date: date_input, priority: priority_input};
+    fn commit_form(&mut self, form: &mut TodoForm) {
+        let new_item = TodoItem {
+            item_name: form.name.take(), 
+            date: form.date.take(),
+            priority: match form.priority {
+                Priority::Low => Priority::Low,
+                Priority::High => Priority::High,
+                Priority::Medium => Priority::Medium,
+            },
+        };
+        form.name.clear();
+        form.date.clear();
         self.item_list.push(new_item);
-        // if no item, autoselect the first added item
-        if self.state.selected().is_none() {
-            self.state.select(Some(0));
-        }
+
+        if self.state.selected().is_none() { self.state.select(Some(0)); }
     }
 }
 
@@ -109,19 +117,16 @@ impl TodoForm {
         let block = Block::bordered().title("Priority").border_style(border_style);
         let para = Paragraph::new( match self.priority {
             Priority::Low => "Low", Priority::Medium => "Medium", Priority::High => "High",
-        });
+        }).block(block);
         frame.render_widget(para, priority_area);
     }
-
-    fn commit_form(&mut self, )
-
 
     fn cycle_priority(&mut self) {
         self.priority = match self.priority {
             Priority::Low => Priority::Medium,
             Priority::Medium => Priority::High,
             Priority::High => Priority::Low,
-        }
+        };
 
     }
 
@@ -146,8 +151,8 @@ impl Screen for TodoList {
                 FormResult::Stay => {},
                 FormResult::Cancel => self.form = None,
                 FormResult::Submit => {
-                    let f = self.form.take().unwrap(); // potentially add check for none?
-                    self.commit_form(f);
+                    let mut f = self.form.take().unwrap(); // potentially add check for none?
+                    self.commit_form(&mut f);
                 }
             }
             return Transition::Stay;
@@ -171,16 +176,20 @@ impl Screen for TodoList {
                 self.item_list.remove(self.state.selected().unwrap());
                 Transition::Stay
             },
-            /*
             KeyCode::Char('e') => {
-                Transition::Push(Box::new(Editor::new()))
+                self.form = Some(TodoForm::new());
+                Transition::Stay
             }
-            */
             _ => Transition::Stay
         }
     }
     
     fn draw(&mut self, frame: &mut Frame, area: Rect) {
+
+        if let Some(form) = &mut self.form {
+            form.draw(frame, area);
+            return
+        }
         let items: Vec<ListItem> = self.item_list.iter()
             .map(|item| ListItem::new(
                     format!("{}{}{}", item.item_name, item.date, match item.priority {
