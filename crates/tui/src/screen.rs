@@ -6,6 +6,7 @@ pub enum Transition {
     Pop,
     Push(Box<dyn Screen>),
     Quit,
+    SwitchFocus,
 }
 
 pub trait Screen {

@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 pub struct TextField {
-    pub value: String, 
+    pub value: String,  // pub for commit_form in TodoList
     cursor: usize,
 }
 
@@ -19,9 +19,9 @@ impl TextField {
         }
     }
 
-    pub fn from(initial: String) -> Self {
-        let cursor = initial.chars().count();
-        Self { value: initial, cursor }
+    pub fn new_with_value(val: String) -> Self {
+        let cursor = val.chars().count();
+        Self { value: val, cursor }
     }
 
     pub fn value(&self) -> &str {

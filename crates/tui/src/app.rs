@@ -41,25 +41,8 @@ impl App {
             if !event::poll(Duration::from_millis(100))? { continue; }
             let cur_event = event::read()?;
 
-            if let Event::Key(key) = cur_event {
-                if key.kind != KeyEventKind::Press {
-                    continue;
-                }
-
-                if key.code == KeyCode::Tab {
-                    self.focus = match self.focus {
-                        Focus::Menu => {
-                            if self.stack.is_empty() {
-                                Focus::Menu
-                            } else {
-                                Focus::Screen
-                            }
-                        }
-                        Focus::Screen => Focus::Menu,
-                    };
-                    continue;
-                }
-            }
+            let Event::Key(key) = cur_event else { continue; };
+            if key.kind != KeyEventKind::Press { continue; }
 
             let transition = match self.focus {
                 Focus::Menu => self.menu.handle_event(cur_event),
@@ -80,6 +63,12 @@ impl App {
                     self.stack.pop();
                     if self.stack.is_empty() {
                         self.focus = Focus::Menu;
+                    }
+                },
+                Transition::SwitchFocus => {
+                    self.focus = match self.focus {
+                        Focus::Menu => if self.stack.is_empty() { Focus::Menu } else { Focus::Screen },
+                        Focus::Screen => Focus::Menu,
                     }
                 }
             }

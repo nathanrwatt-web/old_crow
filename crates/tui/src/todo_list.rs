@@ -7,6 +7,7 @@ use ratatui::{
 use crate::screen::{Screen, Transition};
 use crate::text_field::TextField;
 
+#[derive(Clone, Copy)]
 pub enum Priority {
     Low, 
     Medium, 
@@ -38,17 +39,20 @@ impl TodoList {
         let new_item = TodoItem {
             item_name: form.name.take(), 
             date: form.date.take(),
-            priority: match form.priority {
-                Priority::Low => Priority::Low,
-                Priority::High => Priority::High,
-                Priority::Medium => Priority::Medium,
-            },
+            priority: form.priority,
         };
-        form.name.clear();
-        form.date.clear();
-        self.item_list.push(new_item);
 
-        if self.state.selected().is_none() { self.state.select(Some(0)); }
+        match form.editing_existing {
+            Some(index) if index < self.item_list.len() => {
+                self.item_list[index] = new_item;
+            }
+            _ => {
+                self.item_list.push(new_item);
+                if self.state.selected().is_none() {
+                    self.state.select(Some(0));
+                }
+            }
+        }
     }
 }
 
@@ -73,6 +77,16 @@ impl TodoForm {
             priority: Priority::Low,
             focus: FormFocus::Name,
             editing_existing: None,
+        }
+    }
+    // consider adding more paramters to start off with what's already there 
+    fn create_existing(name_val: &str, date_val: &str, priority_val: Priority, index: usize) -> Self {
+        Self {
+            name: TextField::new_with_value(name_val.to_string()),
+            date: TextField::new_with_value(date_val.to_string()),
+            priority: priority_val,
+            focus: FormFocus::Name,
+            editing_existing: Some(index),
         }
     }
 
@@ -127,17 +141,15 @@ impl TodoForm {
             Priority::Medium => Priority::High,
             Priority::High => Priority::Low,
         };
-
     }
 
     fn next_focus(&mut self) -> FormFocus {
         match self.focus {
             FormFocus::Name => FormFocus::Date,
             FormFocus::Date => FormFocus::Priority,
-            FormFocus::Priority => FormFocus::Date,
+            FormFocus::Priority => FormFocus::Name,
         }
     }
-
 }
 
 impl Screen for TodoList {
@@ -159,6 +171,7 @@ impl Screen for TodoList {
         }
 
         match key.code {
+            KeyCode::Tab => Transition::SwitchFocus,
             KeyCode::Char('q') => Transition::Pop,
             KeyCode::Char('n') => {
                 self.form = Some(TodoForm::new());
@@ -173,11 +186,20 @@ impl Screen for TodoList {
                 Transition::Stay
             },
             KeyCode::Backspace => {
-                self.item_list.remove(self.state.selected().unwrap());
+                if let Some(index) = self.state.selected() && index < self.item_list.len() {
+                        self.item_list.remove(index);
+                }
                 Transition::Stay
             },
             KeyCode::Char('e') => {
-                self.form = Some(TodoForm::new());
+                if let Some(index) = self.state.selected() && let Some(item) = self.item_list.get(index){
+                        self.form = Some(TodoForm::create_existing(
+                                &item.item_name,
+                                &item.date,
+                                item.priority,
+                                index,
+                        ));
+                }
                 Transition::Stay
             }
             _ => Transition::Stay
@@ -192,7 +214,7 @@ impl Screen for TodoList {
         }
         let items: Vec<ListItem> = self.item_list.iter()
             .map(|item| ListItem::new(
-                    format!("{}{}{}", item.item_name, item.date, match item.priority {
+                    format!("{}       {}       {}", item.item_name, item.date, match item.priority {
                         Priority::Low => "Low Priority",
                         Priority::Medium => "Medium Priority",
                         Priority::High => "High Priority",
@@ -208,7 +230,7 @@ impl Screen for TodoList {
     }
 
     fn footer_hint(&self) -> &str {
-        "TodoList: <q> quit | <i/j> move | <e> editor | <Backspace> delete"
+        "TodoList: <q> quit | <i/j> move | <e> editor | <n> new item | <Backspace> delete"
     }
 
 }

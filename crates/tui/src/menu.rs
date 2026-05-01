@@ -32,6 +32,7 @@ impl Screen for Menu {
 
         match key.code {
             KeyCode::Char('q') => Transition::Quit,
+            KeyCode::Tab => Transition::SwitchFocus,
             KeyCode::Up | KeyCode::Char('i') => {
                self.state.select_previous();
                Transition::Stay
